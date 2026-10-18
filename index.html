@@ -4188,33 +4188,21 @@ window.GG = (function () {
     if (!save.ad_coins || save.ad_coins.date !== todayStr()) return AD_COINS_PER_DAY;
     return Math.max(0, AD_COINS_PER_DAY - (save.ad_coins.n || 0));
   }
-  function vkFreeBonusReady() {
-    return Date.now() - (save.last_vk_bonus || 0) >= 30 * 60 * 1000;
-  }
   function grantAdCoins() {
-    if (!save.ad_coins || save.ad_coins.date !== todayStr()) save.ad_coins = { date: todayStr(), n: 0 };
-    save.ad_coins.n++;
     save.coins += 20; save.stats.coins_earned += 20;
     persist(); Sound.coin();
     toast(t('ad_coins_got'));
     renderMenu();
   }
+  function consumeAdSlot() {
+    if (!save.ad_coins || save.ad_coins.date !== todayStr()) save.ad_coins = { date: todayStr(), n: 0 };
+    save.ad_coins.n++;
+    persist();
+  }
   function watchAdCoins() {
     if (adCoinsLeft() <= 0) { toast(t('ad_coins_limit')); return; }
-    if (P && P.name === 'vk' && !vkFreeBonusReady()) {
-      var ms = 30 * 60 * 1000 - (Date.now() - (save.last_vk_bonus || 0));
-      toast(t('ad_vk_cooldown', { m: Math.max(1, Math.ceil(ms / 60000)) }));
-      return;
-    }
-    if (P && P.name === 'vk') {
-      // VK platform-ads model: no self-triggered rewarded -> free timed bonus
-      save.last_vk_bonus = Date.now();
-      persist();
-      grantAdCoins();
-      return;
-    }
     showRewarded(function () {
-      if (!save.ad_coins || save.ad_coins.date !== todayStr()) save.ad_coins = { date: todayStr(), n: 0 };
+      if (!(P && P.name === 'vk')) consumeAdSlot();
       grantAdCoins();
     });
   }
@@ -4376,6 +4364,14 @@ window.GG = (function () {
     });
   }
   function showRewarded(onReward, onFail) {
+    if (P && P.name === 'vk') {
+      // VK platform-ads model: no self-triggered videos.
+      // Every "ad" button spends the shared daily bonus pool instead.
+      if (adCoinsLeft() <= 0) { toast(t('ad_coins_limit')); if (onFail) onFail(); return; }
+      consumeAdSlot();
+      if (onReward) onReward();
+      return;
+    }
     withAdPause(function (restore) {
       var rewarded = false;
       P.rewarded(function () {
@@ -4585,6 +4581,7 @@ window.GG = (function () {
 
   function btn(label, cls, fn, icon) {
     label = String(label).split('🪙').join('<img class="coinmini" src="img/coin.png" alt="">');
+    if (P && P.name === 'vk') label = label.split('🎬').join('🎁');
     var b = el('button', 'btn ' + (cls || ''), (icon ? '<img class="btnicon" src="img/' + icon + '.png" alt="">' : '') + '<span>' + label + '</span>');
     b.addEventListener('click', function (e) { e.preventDefault(); Sound.init(); Sound.click(); fn(); });
     return b;
@@ -4598,7 +4595,7 @@ window.GG = (function () {
     top.innerHTML = '<div class="coinschip"><img src="img/coin.png" alt=""><span id="menuCoins">' + save.coins + '</span></div>';
     var adLeft = adCoinsLeft();
     var isVk = P && P.name === 'vk';
-    var adOk = adLeft > 0 && (isVk ? vkFreeBonusReady() : true);
+    var adOk = adLeft > 0;
     var adbtn = el('button', 'chestbtn adcoins' + (adOk ? ' ready' : ''), '<img src="img/coin.png" alt=""><span class="adlabel">+20' + (isVk ? '🎁' : '🎬') + '</span>');
     adbtn.title = t('ad_coins_btn');
     adbtn.addEventListener('click', function () { Sound.click(); watchAdCoins(); });
